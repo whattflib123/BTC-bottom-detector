@@ -143,12 +143,62 @@ def find_weekly_v_entries(
     return entries
 
 
+def find_weekly_tp_levels(
+    weekly_klines: List[List],
+    latest_idx: int,
+    current_price: float,
+    wanted: int = 3,
+    min_gap_pct: float = 0.05,
+) -> List[Dict]:
+    # Inverse-V definition for take-profit candidates:
+    # one bullish weekly candle + next bearish weekly candle
+    # and use the bullish week's close as the take-profit level.
+    levels: List[Dict] = []
+    threshold_price = current_price * (1.0 + min_gap_pct)
+    for i in range(latest_idx - 1, 0, -1):
+        wk_open = float(weekly_klines[i][1])
+        wk_close = float(weekly_klines[i][4])
+        next_open = float(weekly_klines[i + 1][1])
+        next_close = float(weekly_klines[i + 1][4])
+
+        is_up_week = wk_close > wk_open
+        is_down_week = next_close < next_open
+        if not (is_up_week and is_down_week):
+            continue
+
+        candidate_price = wk_close
+        if candidate_price <= current_price:
+            continue
+
+        if not levels:
+            if candidate_price < threshold_price:
+                continue
+        else:
+            prev_price = levels[-1]["price"]
+            if candidate_price < prev_price * (1.0 + min_gap_pct):
+                continue
+
+        levels.append(
+            {
+                "price": candidate_price,
+                "tp_week_close_time_ms": int(weekly_klines[i][6]),
+            }
+        )
+        if len(levels) >= wanted:
+            break
+
+    return levels
+
+
 def format_message(
     symbol: str,
     close_time_ms: int,
     result: Dict,
     is_repeat: bool,
     weekly_entries: List[Dict],
+    tp_levels: List[Dict],
+    tp_levels_relaxed: List[Dict],
+    tp_relaxed_used: bool,
 ) -> str:
     ok = "✅"
     no = "❌"
@@ -182,6 +232,17 @@ def format_message(
                 lines.append(f"- {price(entry['price'])}")
         else:
             lines.append("- 暫無可用第二進場價位")
+
+        levels_to_show = tp_levels if tp_levels else tp_levels_relaxed
+        lines.extend(["", "止盈價位："])
+        if levels_to_show:
+            for idx, level in enumerate(levels_to_show, start=1):
+                pct = (level["price"] / result["close"] - 1) * 100
+                lines.append(f"- 第{idx}筆：{price(level['price'])} ({pct:+.2f}%)")
+            if tp_relaxed_used:
+                lines.append("- 註：已放寬 5% 間距規則")
+        else:
+            lines.append("- 價格創新高，建議根據50日均線移動止盈")
 
     if not result["signal"]:
         lines.extend(
@@ -245,7 +306,42 @@ def main() -> int:
         weekly_entries = find_weekly_v_entries(
             weekly_klines, weekly_idx, current_price=result["close"], max_count=2
         )
-        message = format_message(symbol, close_time_ms, result, is_repeat, weekly_entries)
+        tp_levels = find_weekly_tp_levels(
+            weekly_klines,
+            weekly_idx,
+            current_price=result["close"],
+            wanted=3,
+            min_gap_pct=0.05,
+        )
+        tp_levels_relaxed: List[Dict] = []
+        tp_relaxed_used = False
+        if len(tp_levels) < 3:
+            tp_relaxed_used = True
+            tp_levels_relaxed = find_weekly_tp_levels(
+                weekly_klines,
+                weekly_idx,
+                current_price=result["close"],
+                wanted=3,
+                min_gap_pct=0.0,
+            )
+            if tp_levels:
+                seen_prices = {level["price"] for level in tp_levels}
+                for level in tp_levels_relaxed:
+                    if level["price"] not in seen_prices:
+                        tp_levels.append(level)
+                        seen_prices.add(level["price"])
+                    if len(tp_levels) >= 3:
+                        break
+        message = format_message(
+            symbol,
+            close_time_ms,
+            result,
+            is_repeat,
+            weekly_entries,
+            tp_levels,
+            tp_levels_relaxed,
+            tp_relaxed_used,
+        )
         send_telegram(token, chat_id, message)
 
         print("Message sent to Telegram.")

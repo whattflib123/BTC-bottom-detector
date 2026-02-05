@@ -14,6 +14,7 @@ Logic overview:
 - If a signal is triggered, the message includes:
   - First entry price (the signal candle close)
   - Second entry prices (up to two weekly V-point levels)
+  - Take-profit prices (up to three weekly reversal highs)
 
 ## Strategy and Entry Conditions
 
@@ -29,6 +30,15 @@ This applies SNR (support/resistance) ideas: weekly open/close levels are often 
 
 - V definition: `one bearish weekly candle + next bullish weekly candle`
 - Candidate level: close of the bearish weekly candle
+
+### Take-Profit (Weekly Reversal High) Logic
+
+- Displayed only when the full bottom signal is triggered, in the same Telegram message
+- Candidate definition: `one bullish weekly candle + next bearish weekly candle`
+- Candidate level: close of the bullish weekly candle
+- Up to three take-profit levels, with a default minimum spacing of `5%`
+- If fewer than three levels are found with the 5% rule, the rule is relaxed to fill more levels
+- If still none are found, show: `Price is making new highs; use MA50 trailing take-profit`
 
 ## Project Files
 
