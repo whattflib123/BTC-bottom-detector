@@ -7,6 +7,9 @@ Logic overview:
 - 🔹 MA50 below MA200 (`MA200 > MA50`) is treated as a classic bear-market structure, where bottom-fishing setups are more meaningful.
 - 🔹 Abnormal volume often appears near major tops/bottoms.
 
+![](pic/show.jpeg)
+
+
 ## Features
 
 - On each run, it checks whether the **latest closed daily candle** triggers a bottom signal.
